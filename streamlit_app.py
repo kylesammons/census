@@ -22,7 +22,7 @@ dma_df = pd.DataFrame(list(zip_to_dma.items()), columns=['zip_code_tabulation_ar
 
 st.subheader("Census Data API")
 # --- Tabs ---
-tab1, tab2 = st.tabs(["Fetch from API", "Join Downloaded Files"])
+tab1, tab2 = st.tabs(["Fetch from API", "Join Files"])
 
 # --- Tab 1: Census API ---
 with tab1:
