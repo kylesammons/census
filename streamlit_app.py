@@ -39,7 +39,7 @@ with tab1:
     )
 
     selected_row = dropdown_df.iloc[selected_row_index]
-    st.dataframe(filtered_table)
+    st.dataframe(dropdown_df)
 
     if st.button("Run"):
         if selected_row.empty:
