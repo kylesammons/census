@@ -27,7 +27,7 @@ tab1, tab2 = st.tabs(["Fetch from API", "Join Downloaded Files"])
 # --- Tab 1: Census API ---
 with tab1:
 
-    acs_table = pd.read_excel('census/ACS2023_Table_Shells.xlsx')
+    acs_table = pd.read_excel('ACS2023_Table_Shells.xlsx')
     filtered_table = acs_table[acs_table['Data Release'].notnull()]
     dropdown_df = filtered_table[['Table ID', 'Stub']].drop_duplicates().reset_index(drop=True)
 
