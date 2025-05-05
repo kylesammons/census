@@ -17,7 +17,7 @@ def clean_header_for_bigquery(header: str) -> str:
 def remove_unnamed_columns(df):
     return df.loc[:, ~df.columns.str.contains('^unnamed', case=False)]
 
-zip_to_dma = pd.read_csv('Zip Code to DMA - Zipcode Reference.csv')
+zip_to_dma = pd.read_csv('workspaces/Zip Code to DMA - Zipcode Reference.csv')
 dma_df = pd.DataFrame(list(zip_to_dma.items()), columns=['zip_code_tabulation_area', 'DMA'])
 
 st.subheader("Census Data API")
@@ -27,7 +27,7 @@ tab1, tab2 = st.tabs(["Fetch from API", "Join Downloaded Files"])
 # --- Tab 1: Census API ---
 with tab1:
 
-    acs_table = pd.read_excel('ACS2023_Table_Shells.xlsx')
+    acs_table = pd.read_excel('workspaces/ACS2023_Table_Shells.xlsx')
     filtered_table = acs_table[acs_table['Data Release'].notnull()]
     dropdown_df = filtered_table[['Table ID', 'Stub']].drop_duplicates().reset_index(drop=True)
 
