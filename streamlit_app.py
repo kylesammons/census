@@ -39,6 +39,7 @@ with tab1:
     )
 
     selected_row = dropdown_df.iloc[selected_row_index]
+    st.dataframe(acs_table)
 
     if st.button("Run"):
         if selected_row.empty:
@@ -74,6 +75,7 @@ with tab1:
             df_filtered = final_census_df[[col for col in final_census_df.columns if table_id.lower() not in col]]
 
             st.dataframe(df_filtered)
+            
 
 # --- Tab 2: Join Files ---
 with tab2:
