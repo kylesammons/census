@@ -17,7 +17,7 @@ def clean_header_for_bigquery(header: str) -> str:
 def remove_unnamed_columns(df):
     return df.loc[:, ~df.columns.str.contains('^unnamed', case=False)]
 
-zip_to_dma = pd.read_csv('census/Zip Code to DMA - Zipcode Reference.csv')
+zip_to_dma = pd.read_csv('census/streamlit_app.py/Zip Code to DMA - Zipcode Reference.csv')
 dma_df = pd.DataFrame(list(zip_to_dma.items()), columns=['zip_code_tabulation_area', 'DMA'])
 
 st.subheader("Census Data API")
