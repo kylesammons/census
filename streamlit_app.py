@@ -17,8 +17,9 @@ def clean_header_for_bigquery(header: str) -> str:
 def remove_unnamed_columns(df):
     return df.loc[:, ~df.columns.str.contains('^unnamed', case=False)]
 
-zip_to_dma = pd.read_csv('Zip Code to DMA - Zipcode Reference.csv')
-dma_df = pd.DataFrame(list(zip_to_dma.items()), columns=['zip_code_tabulation_area', 'DMA'])
+zip_to_dma = pd.read_csv('/Users/trimark/Desktop/Jupyter_Notebooks/Zip Code to DMA - Zipcode Reference.csv')
+zip_to_dma['zip_code_tabulation_area'] = zip_to_dma['zip_code_tabulation_area'].astype(str)
+dma_df = pd.DataFrame(zip_to_dma)
 
 st.subheader("Census Data API")
 # --- Tabs ---
@@ -87,6 +88,9 @@ with tab2:
         for file in uploaded_files:
             df = pd.read_csv(file)
             df.columns = [clean_header_for_bigquery(col) for col in df.columns]
+            # Ensure zip_code_tabulation_area is string
+            if 'zip_code_tabulation_area' in df.columns:
+                df['zip_code_tabulation_area'] = df['zip_code_tabulation_area'].astype(str)
             dfs.append(df)
 
         # Join on 'zip_code_tabulation_area'
@@ -94,8 +98,11 @@ with tab2:
         for df in dfs[1:]:
             base_df = pd.merge(base_df, df, on='zip_code_tabulation_area', how='outer', suffixes=('', '_dup'))
 
-        # Drop duplicate columns resulting from merge
+        # Drop duplicate columns
         base_df = base_df.loc[:, ~base_df.columns.duplicated()]
 
-        st.success("Files joined successfully.")
-        st.dataframe(base_df)
+        # Merge with DMA dataframe
+        merged_with_dma = pd.merge(base_df, dma_df, on='zip_code_tabulation_area', how='left')
+
+        st.success("Files joined and merged with DMA successfully.")
+        st.dataframe(merged_with_dma)
