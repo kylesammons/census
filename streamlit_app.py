@@ -74,8 +74,8 @@ with tab1:
 
             final_census_df = final_census_df.loc[:, ~final_census_df.columns.duplicated()]
             df_filtered = final_census_df[[col for col in final_census_df.columns if table_id.lower() not in col]]
-            merged_df = pd.merge(df_filtered, dma_df, on='zip_code_tabulation_area', how='outer')
-            st.dataframe(merged_df)
+            # merged_df = pd.merge(df_filtered, dma_df, on='zip_code_tabulation_area', how='outer')
+            st.dataframe(df_filtered)
             
 
 # --- Tab 2: Join Files ---
