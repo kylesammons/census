@@ -17,7 +17,7 @@ def clean_header_for_bigquery(header: str) -> str:
 def remove_unnamed_columns(df):
     return df.loc[:, ~df.columns.str.contains('^unnamed', case=False)]
 
-zip_to_dma = pd.read_csv('/Users/trimark/Desktop/Jupyter_Notebooks/Zip Code to DMA - Zipcode Reference.csv')
+zip_to_dma = pd.read_csv('Zip Code to DMA - Zipcode Reference.csv')
 zip_to_dma['zip_code_tabulation_area'] = zip_to_dma['zip_code_tabulation_area'].astype(str)
 dma_df = pd.DataFrame(zip_to_dma)
 
@@ -74,8 +74,8 @@ with tab1:
 
             final_census_df = final_census_df.loc[:, ~final_census_df.columns.duplicated()]
             df_filtered = final_census_df[[col for col in final_census_df.columns if table_id.lower() not in col]]
-            # merged_df = pd.merge(df_filtered, dma_df, on='zip_code_tabulation_area', how='outer')
-            st.dataframe(df_filtered)
+            merged_df = pd.merge(df_filtered, dma_df, on='zip_code_tabulation_area', how='outer')
+            st.dataframe(merged_df)
             
 
 # --- Tab 2: Join Files ---
