@@ -81,7 +81,7 @@ if "previous_topic" not in st.session_state:
 # Header with logo
 col1, col2 = st.columns([0.05, 0.95])  # adjust the ratio as needed
 with col1:
-    st.image("/Users/trimark/Desktop/Waves-Logo_Color (2).png", width=75)  # tweak width to fit your UI
+    st.image("Waves-Logo_Color (2).png", width=75)  # tweak width to fit your UI
 with col2:
     st.subheader("CensusLAB")
 
@@ -96,7 +96,7 @@ filtered_table = filtered_table.drop_duplicates(subset=["Table ID"])
 
 # Sidebar: Logo and Topic Filter
 with st.sidebar:
-    st.image("/Users/trimark/Desktop/Waves-Logo_Color.svg", width=200)
+    st.image("Waves-Logo_Color.svg", width=200)
     
     # Topic filter with radio
     st.markdown("<br>", unsafe_allow_html=True)
