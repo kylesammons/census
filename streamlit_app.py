@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import re
 import requests
-import time
 import zipfile
 import io
 
@@ -144,12 +143,6 @@ else:
 table_df = display_table[["Table ID", "Stub", "Topic"]].drop_duplicates().reset_index(drop=True)
 # Sync the Selected column with session state
 table_df["Selected"] = table_df["Table ID"].apply(lambda x: x in st.session_state.selected_ids)
-
-# Add Badges column (static example; you can customize based on Stub/Topic/etc.)
-def generate_badges(row):
-    return ":violet-badge[:material/star: Favorite] :orange-badge[⚠️ Needs review] :gray-badge[Deprecated]"
-
-table_df["Badges"] = table_df.apply(generate_badges, axis=1)
 
 # Build queue DataFrame from ALL selected items (will be updated after data editor)
 all_table_df = filtered_table[["Table ID", "Stub", "Topic"]].drop_duplicates().reset_index(drop=True)
