@@ -61,7 +61,7 @@ def create_zip_file(tables_dict):
     return zip_buffer.getvalue()
 
 # Set Streamlit page config
-st.set_page_config(page_title="CensusLAB", page_icon="/Users/trimark/Desktop/Waves-Logo_Color (2).png",layout="wide")
+st.set_page_config(page_title="CensusLAB", page_icon="Waves-Logo_Color (2).png",layout="wide", initial_sidebar_state="expanded")
 
 # Session state tracking
 if "selected_ids" not in st.session_state:
