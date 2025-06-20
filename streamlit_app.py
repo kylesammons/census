@@ -61,7 +61,7 @@ def create_zip_file(tables_dict):
     return zip_buffer.getvalue()
 
 # Set Streamlit page config
-st.set_page_config(page_title="CensusLAB", page_icon="Waves-Logo_Color (2).png",layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="CensusLAB", page_icon="📊",layout="wide")
 
 # Session state tracking
 if "selected_ids" not in st.session_state:
@@ -77,12 +77,7 @@ if "last_edited_df" not in st.session_state:
 if "previous_topic" not in st.session_state:
     st.session_state.previous_topic = "All"
 
-# Header with logo
-col1, col2 = st.columns([0.05, 0.95])  # adjust the ratio as needed
-with col1:
-    st.image("Waves-Logo_Color (2).png", width=75)  # tweak width to fit your UI
-with col2:
-    st.subheader("CensusLAB")
+st.title("📊 CensusLAB")
 
 # ACS
 acs_table = pd.read_excel("ACS2023_Table_Shells.xlsx")
