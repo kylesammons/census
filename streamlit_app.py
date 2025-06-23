@@ -61,7 +61,7 @@ def create_zip_file(tables_dict):
     return zip_buffer.getvalue()
 
 # Set Streamlit page config
-st.set_page_config(page_title="CensusLAB", page_icon="📊",layout="wide")
+st.set_page_config(page_title="CensusLAB", page_icon="📊",layout="wide", initial_sidebar_state="expanded")
 
 # Session state tracking
 if "selected_ids" not in st.session_state:
@@ -206,7 +206,7 @@ with tab1:
     queue_df = all_table_df[all_table_df["Table ID"].isin(st.session_state.selected_ids)]
     
     with sidebar_queue_placeholder.container():
-        with st.container(height=280):
+        with st.container():
             if queue_df.empty:
                 st.markdown("*No tables selected*")
             else:
