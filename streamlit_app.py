@@ -4,6 +4,8 @@ import re
 import requests
 import zipfile
 import io
+import pickle
+import os
 
 # --- Helper Function ---
 def clean_header_for_bigquery(header: str) -> str:
@@ -18,6 +20,25 @@ def clean_header_for_bigquery(header: str) -> str:
 
 def remove_unnamed_columns(df):
     return df.loc[:, ~df.columns.str.contains('^unnamed', case=False)]
+
+def load_user_data():
+    """Load user notes and tags from pickle file"""
+    try:
+        if os.path.exists('user_table_data.pkl'):
+            with open('user_table_data.pkl', 'rb') as f:
+                return pickle.load(f)
+    except:
+        pass
+    return {}
+
+def save_user_data(data):
+    """Save user notes and tags to pickle file"""
+    try:
+        with open('user_table_data.pkl', 'wb') as f:
+            pickle.dump(data, f)
+        return True
+    except:
+        return False
 
 zip_to_dma = pd.read_csv('Zip Code to DMA - Zipcode Reference.csv')
 zip_to_dma['zip_code_tabulation_area'] = zip_to_dma['zip_code_tabulation_area'].astype(str)
@@ -76,6 +97,8 @@ if "last_edited_df" not in st.session_state:
     st.session_state.last_edited_df = None
 if "previous_topic" not in st.session_state:
     st.session_state.previous_topic = "All"
+if "user_data" not in st.session_state:
+    st.session_state.user_data = load_user_data()
 
 st.title("📊 CensusLAB")
 
@@ -98,6 +121,7 @@ with st.sidebar:
     all_topics = sorted(filtered_table["Topic"].dropna().unique())
     selected_topic = st.radio("Topic",["All"] + all_topics, label_visibility="collapsed")
     st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     col1, col2 = st.columns([0.84, 0.16])  # adjust the ratio as needed
     with col1:
         st.markdown("### Queue")
@@ -108,8 +132,6 @@ with st.sidebar:
             st.session_state.fetched_tables.clear()
             st.session_state.table_stubs.clear()  # Clear stubs too
             st.rerun()
-
-
 
 # ✅ KEY FIX: Save selections before topic change
 if (st.session_state.last_edited_df is not None and 
@@ -139,6 +161,10 @@ table_df = display_table[["Table ID", "Stub", "Topic"]].drop_duplicates().reset_
 # Sync the Selected column with session state
 table_df["Selected"] = table_df["Table ID"].apply(lambda x: x in st.session_state.selected_ids)
 
+# Add Notes and Tag columns from user data
+table_df["Notes"] = table_df["Table ID"].apply(lambda x: st.session_state.user_data.get(x, {}).get("notes", ""))
+table_df["Tag"] = table_df["Table ID"].apply(lambda x: st.session_state.user_data.get(x, {}).get("tag", ""))
+
 # Build queue DataFrame from ALL selected items (will be updated after data editor)
 all_table_df = filtered_table[["Table ID", "Stub", "Topic"]].drop_duplicates().reset_index(drop=True)
 
@@ -157,15 +183,48 @@ with tab1:
     """
 )
 
-    # Editable table - simpler approach without callback
+    # Column configuration for the data editor
+    column_config = {
+        "Selected": st.column_config.CheckboxColumn(required=False),
+        "Table ID": st.column_config.TextColumn(disabled=True),
+        "Stub": st.column_config.TextColumn(disabled=True),
+        "Topic": st.column_config.TextColumn(disabled=True),
+        "Notes": st.column_config.TextColumn(help="Add your notes about this table"),
+        "Tag": st.column_config.SelectboxColumn(
+            "Tag",
+            help="Tag this table",
+            options=["", "⭐ Favorite", "❌ Errors"],
+            required=False
+        )
+    }
+
+    # Editable table
     edited_df = st.data_editor(
         table_df,
-        column_config={"Selected": st.column_config.CheckboxColumn(required=False)},
+        column_config=column_config,
         use_container_width=True,
         hide_index=True,
         num_rows="dynamic",
         key=f"data_editor_{selected_topic}"  # Topic-specific key
     )
+
+    # Save button
+    col1, col2, col3 = st.columns([1, 1, 3])
+    with col1:
+        if st.button("💾 Save ", type="secondary"):
+            # Update user_data with notes and tags from edited_df
+            for _, row in edited_df.iterrows():
+                table_id = row["Table ID"]
+                if table_id not in st.session_state.user_data:
+                    st.session_state.user_data[table_id] = {}
+                st.session_state.user_data[table_id]["notes"] = row["Notes"]
+                st.session_state.user_data[table_id]["tag"] = row["Tag"]
+            
+            # Save to file
+            if save_user_data(st.session_state.user_data):
+                st.toast("Notes and tags saved successfully!", icon="✅")
+            else:
+                st.toast("Error saving notes and tags", icon="❌")
 
     # Process changes after data editor renders
     current_selected_ids = set(edited_df[edited_df["Selected"] == True]["Table ID"])
@@ -227,26 +286,24 @@ with tab1:
                         st.markdown(row["Stub"][:25] + "..." if len(row["Stub"]) > 25 else row["Stub"])
                     with col3:
                         st.markdown(f"{icon}")
-        
-
-    
-    
-    # Run all button
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        if st.button("🚀 Run All in Queue", type="primary"):
-            if not st.session_state.selected_ids:
-                st.warning("No table IDs selected!")
-            else:
-                pending_count = sum(1 for status in st.session_state.fetch_status.values() if status == "pending")
-                if pending_count == 0:
-                    st.info("All tables in queue have already been processed!")
-                else:
-                    for table_id in st.session_state.selected_ids:
-                        if st.session_state.fetch_status.get(table_id) == "pending":
-                            st.session_state.fetch_status[table_id] = "running"
-                            break  # Only start one at a time
-                    st.rerun()
+            
+            # Run all button
+            st.markdown("<br>", unsafe_allow_html=True)
+            col1, col2 = st.columns([1, 1])
+            with col2:
+                if st.button("🚀 Run Queue", type="primary", use_container_width=True):
+                    if not st.session_state.selected_ids:
+                        st.warning("No table IDs selected!")
+                    else:
+                        pending_count = sum(1 for status in st.session_state.fetch_status.values() if status == "pending")
+                        if pending_count == 0:
+                            st.info("All tables in queue have already been processed!")
+                        else:
+                            for table_id in st.session_state.selected_ids:
+                                if st.session_state.fetch_status.get(table_id) == "pending":
+                                    st.session_state.fetch_status[table_id] = "running"
+                                    break  # Only start one at a time
+                            st.rerun()
 
     # Handle fetching for 1 "running" table at a time
     for table_id, status in st.session_state.fetch_status.items():
