@@ -40,8 +40,8 @@ def save_user_data(data):
     except:
         return False
 
-zip_to_dma = pd.read_csv('Zip Code to DMA - Zipcode Reference.csv')
-zip_to_dma['zip_code_tabulation_area'] = zip_to_dma['zip_code_tabulation_area'].astype(str)
+zip_to_dma = pd.read_excel('Zip Code to DMA.xlsx', dtype={'zip_code_tabulation_area': str})
+zip_to_dma['zip_code_tabulation_area'] = zip_to_dma['zip_code_tabulation_area'].str.zfill(5)
 dma_df = pd.DataFrame(zip_to_dma)
 
 def categorize_table(stub):
@@ -100,7 +100,7 @@ if "previous_topic" not in st.session_state:
 if "user_data" not in st.session_state:
     st.session_state.user_data = load_user_data()
 
-st.title("📊 CensusLAB")
+st.title("CensusLAB")
 
 # ACS
 acs_table = pd.read_excel("ACS2023_Table_Shells.xlsx")
@@ -373,7 +373,7 @@ with tab1:
                         # Merge with zip code reference data (DMA, city, state, county)
                         if 'zip_code_tabulation_area' in df_filtered.columns:
                             # Ensure zip_code_tabulation_area is string for proper merging
-                            df_filtered['zip_code_tabulation_area'] = df_filtered['zip_code_tabulation_area'].astype(str)
+                            df_filtered['zip_code_tabulation_area'] = df_filtered['zip_code_tabulation_area'].astype(str).str.zfill(5)
                             df_filtered = pd.merge(df_filtered, dma_df, on='zip_code_tabulation_area', how='left')
 
                         # Save results with stub
@@ -456,6 +456,7 @@ with tab2:
             # Ensure zip_code_tabulation_area is string
             if 'zip_code_tabulation_area' in df.columns:
                 df['zip_code_tabulation_area'] = df['zip_code_tabulation_area'].astype(str)
+                df['zip_code_tabulation_area'] = df['zip_code_tabulation_area'].str.zfill(5)
             dfs.append(df)
 
         # Drop duplicate columns
