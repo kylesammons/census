@@ -459,8 +459,47 @@ with tab2:
                 df['zip_code_tabulation_area'] = df['zip_code_tabulation_area'].str.zfill(5)
             dfs.append(df)
 
-        # Drop duplicate columns
-        base_df = df.loc[:, ~df.columns.duplicated()]
+        # Join all dataframes on zip_code_tabulation_area
+        if len(dfs) > 1:
+            base_df = dfs[0]
+            for df in dfs[1:]:
+                # Find common columns for merging (typically zip_code_tabulation_area and geographic info)
+                common_cols = [col for col in base_df.columns if col in df.columns and col in ['zip_code_tabulation_area', 'state', 'county', 'city', 'dma_name']]
+                if common_cols:
+                    base_df = pd.merge(base_df, df, on=common_cols, how='outer', suffixes=('', '_dup'))
+                else:
+                    # If no common columns, merge on zip_code_tabulation_area if available
+                    if 'zip_code_tabulation_area' in base_df.columns and 'zip_code_tabulation_area' in df.columns:
+                        base_df = pd.merge(base_df, df, on='zip_code_tabulation_area', how='outer', suffixes=('', '_dup'))
+        else:
+            base_df = dfs[0]
 
-        st.success("Files joined and merged with DMA successfully.")
-        st.dataframe(base_df)
+        # Drop duplicate columns
+        base_df = base_df.loc[:, ~base_df.columns.duplicated()]
+
+        # Store the joined dataframe in session state for download
+        st.session_state.joined_df = base_df
+
+        st.success("Files joined and merged successfully.")
+        st.dataframe(base_df, use_container_width=True)
+
+    # Download button for joined file (only show if joined_df exists in session state)
+    if 'joined_df' in st.session_state:
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Convert to CSV for download
+        csv_data = st.session_state.joined_df.to_csv(index=False).encode("utf-8")
+        
+        # Generate filename with timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"joined_census_tables_{timestamp}.csv"
+        
+        st.download_button(
+            label="⬇️ Download Joined CSV",
+            data=csv_data,
+            file_name=filename,
+            mime="text/csv",
+            type="primary",
+            help="Download the joined census tables as CSV"
+        )
