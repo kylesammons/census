@@ -462,8 +462,5 @@ with tab2:
         # Drop duplicate columns
         base_df = df.loc[:, ~df.columns.duplicated()]
 
-        # Merge with DMA dataframe
-        merged_with_dma = pd.merge(base_df, dma_df, on='zip_code_tabulation_area', how='left')
-
         st.success("Files joined and merged with DMA successfully.")
         st.dataframe(merged_with_dma)
