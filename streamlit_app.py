@@ -496,7 +496,7 @@ with tab2:
         filename = f"joined_census_tables_{timestamp}.csv"
         
         st.download_button(
-            label="⬇️ Download Joined CSV",
+            label="⬇️ Download CSV",
             data=csv_data,
             file_name=filename,
             mime="text/csv",
