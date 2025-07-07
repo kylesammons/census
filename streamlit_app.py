@@ -463,4 +463,4 @@ with tab2:
         base_df = df.loc[:, ~df.columns.duplicated()]
 
         st.success("Files joined and merged with DMA successfully.")
-        st.dataframe(merged_with_dma)
+        st.dataframe(base_df)
