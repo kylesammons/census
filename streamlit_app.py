@@ -11,8 +11,6 @@ import os
 def clean_header_for_bigquery(header: str) -> str:
     cleaned_header = header.lower()
     cleaned_header = re.sub(r'[^a-z0-9_]', '_', cleaned_header)
-    if cleaned_header[0].isdigit():
-        cleaned_header = 'col_' + cleaned_header
     cleaned_header = cleaned_header[:128]
     cleaned_header = re.sub(r'_+', '_', cleaned_header)
     cleaned_header = cleaned_header.strip('_')
@@ -42,6 +40,11 @@ def save_user_data(data):
 
 zip_to_dma = pd.read_excel('Zip Code to DMA.xlsx', dtype={'zip_code_tabulation_area': str})
 zip_to_dma['zip_code_tabulation_area'] = zip_to_dma['zip_code_tabulation_area'].str.zfill(5)
+for col in zip_to_dma.select_dtypes(include=['object']).columns:
+    zip_to_dma[col] = zip_to_dma[col].astype(str).str.strip()
+zip_to_dma['DMA'] = zip_to_dma['DMA'].replace({
+    'CLEVLAND AKRON CANTON, OHIO': 'CLEVELAND AKRON CANTON, OHIO'
+})
 dma_df = pd.DataFrame(zip_to_dma)
 
 def categorize_table(stub):
@@ -103,8 +106,53 @@ if "user_data" not in st.session_state:
 st.title("CensusLAB")
 
 # ACS
+# Load and prepare your dataframe
 acs_table = pd.read_excel("ACS2023_Table_Shells.xlsx")
 acs_table["Topic"] = acs_table["Stub"].apply(categorize_table)
+
+def update_hierarchical_labels(df, column_name='Stub'):
+    """
+    Update dataframe to propagate category labels (rows with ':') to subsequent rows
+    and add 'All' to category rows. Stops propagation when encountering another ':'
+    or a blank/null field.
+    
+    Args:
+        df: pandas DataFrame
+        column_name: name of the column to process (default 'Stub')
+    
+    Returns:
+        DataFrame with updated labels
+    """
+    # Create a copy to avoid modifying the original
+    df_updated = df.copy()
+    
+    current_category = None
+    
+    for idx in df_updated.index:
+        stub_value = df_updated.loc[idx, column_name]
+        
+        # Check if the field is blank/null
+        if pd.isna(stub_value) or str(stub_value).strip() == '' or str(stub_value).strip() == 'nan':
+            # Reset category when encountering blank field
+            current_category = None
+            continue
+        
+        stub_value = str(stub_value).strip()
+        
+        # Check if this row contains a ':'
+        if ':' in stub_value:
+            # This is a category row - add 'All' to it
+            current_category = stub_value
+            df_updated.loc[idx, column_name] = f"{current_category} All"
+        else:
+            # This is a subcategory row - prepend the current category if we have one
+            if current_category:
+                df_updated.loc[idx, column_name] = f"{current_category} {stub_value}"
+    
+    return df_updated
+
+# Apply the function to update your dataframe in place
+acs_table = update_hierarchical_labels(acs_table, 'Stub')
 
 # Cleaning ACS Table
 filtered_table = acs_table[acs_table["Data Release"].notnull()]
@@ -447,24 +495,48 @@ with tab1:
 with tab2:
     st.subheader("Upload and Join Multiple Census Files")
     uploaded_files = st.file_uploader("Upload multiple CSV files", accept_multiple_files=True, type="csv")
-
+    
     if uploaded_files and st.button("Join Files"):
         dfs = []
+        
+        # Columns to exclude from table ID prefixing
+        excluded_columns = ['zip_code_tabulation_area', 'State', 'County', 'City', 'DMA']
+        
         for file in uploaded_files:
             df = pd.read_csv(file)
-            df.columns = [clean_header_for_bigquery(col) for col in df.columns]
+            
+            # Extract table ID from filename (everything before the first " - ")
+            filename = file.name
+            if " - " in filename:
+                table_id = filename.split(" - ")[0].strip()
+            else:
+                # Fallback: use filename without extension if no " - " found
+                table_id = filename.split(".")[0].strip()
+            
+            # Apply table ID prefix to columns (except excluded ones)
+            new_columns = []
+            for col in df.columns:
+                if col in excluded_columns:
+                    new_columns.append(col)
+                else:
+                    # Use double underscore as separator, preserving original colons
+                    new_columns.append(f"{table_id}__{col}")
+            
+            df.columns = new_columns
+            
             # Ensure zip_code_tabulation_area is string
             if 'zip_code_tabulation_area' in df.columns:
                 df['zip_code_tabulation_area'] = df['zip_code_tabulation_area'].astype(str)
                 df['zip_code_tabulation_area'] = df['zip_code_tabulation_area'].str.zfill(5)
+            
             dfs.append(df)
-
-        # Join all dataframes on zip_code_tabulation_area
+        
+        # Join all dataframes on common geographic columns
         if len(dfs) > 1:
             base_df = dfs[0]
             for df in dfs[1:]:
-                # Find common columns for merging (typically zip_code_tabulation_area and geographic info)
-                common_cols = [col for col in base_df.columns if col in df.columns and col in ['zip_code_tabulation_area', 'state', 'county', 'city', 'dma_name']]
+                # Find common columns for merging (geographic info columns)
+                common_cols = [col for col in base_df.columns if col in df.columns and col in excluded_columns]
                 if common_cols:
                     base_df = pd.merge(base_df, df, on=common_cols, how='outer', suffixes=('', '_dup'))
                 else:
@@ -473,19 +545,24 @@ with tab2:
                         base_df = pd.merge(base_df, df, on='zip_code_tabulation_area', how='outer', suffixes=('', '_dup'))
         else:
             base_df = dfs[0]
-
+        
         # Drop duplicate columns
         base_df = base_df.loc[:, ~base_df.columns.duplicated()]
-
+        
+        # Reorder columns to put geographic fields at the end
+        geo_columns = [col for col in excluded_columns if col in base_df.columns]
+        data_columns = [col for col in base_df.columns if col not in geo_columns]
+        base_df = base_df[data_columns + geo_columns]
+        
         # Store the joined dataframe in session state for download
         st.session_state.joined_df = base_df
-
+        
         st.success("Files joined and merged successfully.")
         st.dataframe(base_df, use_container_width=True)
-
+    
     # Download button for joined file (only show if joined_df exists in session state)
     if 'joined_df' in st.session_state:
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(" ", unsafe_allow_html=True)
         
         # Convert to CSV for download
         csv_data = st.session_state.joined_df.to_csv(index=False).encode("utf-8")
