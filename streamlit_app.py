@@ -94,7 +94,7 @@ if "fetch_status" not in st.session_state:
     st.session_state.fetch_status = {}
 if "fetched_tables" not in st.session_state:
     st.session_state.fetched_tables = {}
-if "table_stubs" not in st.session_state:  # New: Store stubs for each table
+if "table_stubs" not in st.session_state:
     st.session_state.table_stubs = {}
 if "last_edited_df" not in st.session_state:
     st.session_state.last_edited_df = None
@@ -102,6 +102,8 @@ if "previous_topic" not in st.session_state:
     st.session_state.previous_topic = "All"
 if "user_data" not in st.session_state:
     st.session_state.user_data = load_user_data()
+if "temp_selections" not in st.session_state:  # Track temporary selections
+    st.session_state.temp_selections = set()
 
 st.title("CensusLAB")
 
@@ -170,7 +172,7 @@ with st.sidebar:
     selected_topic = st.radio("Topic",["All"] + all_topics, label_visibility="collapsed")
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
-    col1, col2 = st.columns([0.84, 0.16])  # adjust the ratio as needed
+    col1, col2 = st.columns([0.84, 0.16])
     with col1:
         st.markdown("### Queue")
     with col2:
@@ -178,22 +180,8 @@ with st.sidebar:
             st.session_state.selected_ids.clear()
             st.session_state.fetch_status.clear()
             st.session_state.fetched_tables.clear()
-            st.session_state.table_stubs.clear()  # Clear stubs too
+            st.session_state.table_stubs.clear()
             st.rerun()
-
-# ✅ KEY FIX: Save selections before topic change
-if (st.session_state.last_edited_df is not None and 
-    st.session_state.previous_topic != selected_topic and
-    isinstance(st.session_state.last_edited_df, pd.DataFrame) and
-    "Selected" in st.session_state.last_edited_df.columns and
-    "Table ID" in st.session_state.last_edited_df.columns):
-    # Update selected_ids from the last edited dataframe before changing topics
-    try:
-        current_selections = set(st.session_state.last_edited_df[st.session_state.last_edited_df["Selected"] == True]["Table ID"])
-        st.session_state.selected_ids.update(current_selections)
-    except Exception:
-        # If there's any error, skip the update
-        pass
 
 # Update previous topic
 st.session_state.previous_topic = selected_topic
@@ -204,20 +192,64 @@ if selected_topic != "All":
 else:
     display_table = filtered_table
 
-# Build table to display with session state sync
+# Build table to display - no longer sync with session state for Selected column
 table_df = display_table[["Table ID", "Stub", "Topic"]].drop_duplicates().reset_index(drop=True)
-# Sync the Selected column with session state
-table_df["Selected"] = table_df["Table ID"].apply(lambda x: x in st.session_state.selected_ids)
+# Initialize Selected column as False for all rows
+table_df["Selected"] = False
 
 # Add Notes and Tag columns from user data
 table_df["Notes"] = table_df["Table ID"].apply(lambda x: st.session_state.user_data.get(x, {}).get("notes", ""))
 table_df["Tag"] = table_df["Table ID"].apply(lambda x: st.session_state.user_data.get(x, {}).get("tag", ""))
 
-# Build queue DataFrame from ALL selected items (will be updated after data editor)
+# Build queue DataFrame from ALL selected items
 all_table_df = filtered_table[["Table ID", "Stub", "Topic"]].drop_duplicates().reset_index(drop=True)
 
-# Placeholder for sidebar queue - will be populated after data editor
+# Placeholder for sidebar queue
 sidebar_queue_placeholder = st.sidebar.empty()
+
+# Build and display the queue in sidebar
+queue_df = all_table_df[all_table_df["Table ID"].isin(st.session_state.selected_ids)]
+
+with sidebar_queue_placeholder.container():
+    with st.container():
+        if queue_df.empty:
+            st.markdown("*No tables selected*")
+        else:
+            for i, row in queue_df.iterrows():
+                table_id = row["Table ID"]
+                col1, col2, col3 = st.columns([1.5, 3, 1])
+                status = st.session_state.fetch_status.get(table_id, "pending")
+                icon = {
+                    "pending": "🟰",
+                    "waiting": "⏳", 
+                    "running": "🔄",
+                    "done": "✅",
+                    "error": "❌"
+                }.get(status, "")
+                with col1:
+                    st.markdown(f"**{table_id}**")
+                with col2:
+                    st.markdown(row["Stub"][:25] + "..." if len(row["Stub"]) > 25 else row["Stub"])
+                with col3:
+                    st.markdown(f"{icon}")
+        
+        # Run all button
+        st.markdown("<br>", unsafe_allow_html=True)
+        col1, col2 = st.columns([1, 1])
+        with col2:
+            if st.button("🚀 Run Queue", type="primary", use_container_width=True):
+                if not st.session_state.selected_ids:
+                    st.warning("No table IDs selected!")
+                else:
+                    pending_count = sum(1 for status in st.session_state.fetch_status.values() if status == "pending")
+                    if pending_count == 0:
+                        st.info("All tables in queue have already been processed!")
+                    else:
+                        for table_id in st.session_state.selected_ids:
+                            if st.session_state.fetch_status.get(table_id) == "pending":
+                                st.session_state.fetch_status[table_id] = "running"
+                                break  # Only start one at a time
+                        st.rerun()
 
 # --- Tabs ---
 tab1, tab2 = st.tabs(["Library", "Join"])
@@ -227,7 +259,7 @@ with tab1:
     """
     📊  CensusLAB helps enrich your data and empowers your team to perform data-driven targeting.
 
-    Filter tables by topic, queue relevant data, and pull directly from the Census API. The results are provided at the zip code level with County, State, and DMA fields.
+    Filter tables by topic, select relevant data using checkboxes, and add them to your queue. The results are provided at the zip code level with County, State, and DMA fields.
     """
 )
 
@@ -246,20 +278,25 @@ with tab1:
         )
     }
 
-    # Editable table
+    # Editable table with disabled option to prevent auto-rerun on checkbox changes
     edited_df = st.data_editor(
         table_df,
         column_config=column_config,
         use_container_width=True,
         hide_index=True,
         num_rows="dynamic",
-        key=f"data_editor_{selected_topic}"  # Topic-specific key
+        key=f"data_editor_{selected_topic}",
+        disabled=False  # Keep enabled but we handle the rerun differently
     )
 
-    # Save button
-    col1, col2, col3 = st.columns([1, 1, 3])
+    # Count selected tables
+    selected_count = len(edited_df[edited_df["Selected"] == True])
+
+    # Create columns for Save button and Add to Queue section
+    col1, col2, col3, col4 = st.columns([2, 4, 1, 2])
+    
     with col1:
-        if st.button("💾 Save ", type="secondary"):
+        if st.button("💾 Save Notes ", type="secondary"):
             # Update user_data with notes and tags from edited_df
             for _, row in edited_df.iterrows():
                 table_id = row["Table ID"]
@@ -273,85 +310,32 @@ with tab1:
                 st.toast("Notes and tags saved successfully!", icon="✅")
             else:
                 st.toast("Error saving notes and tags", icon="❌")
-
-    # Process changes after data editor renders
-    current_selected_ids = set(edited_df[edited_df["Selected"] == True]["Table ID"])
     
-    # Identify changes
-    newly_selected = current_selected_ids - st.session_state.selected_ids
-    newly_deselected = st.session_state.selected_ids.intersection(set(edited_df["Table ID"])) - current_selected_ids
-    
-    # Update session state and show toasts
-    if newly_selected:
-        st.session_state.selected_ids.update(newly_selected)
-        for table_id in newly_selected:
-            st.session_state.fetch_status[table_id] = "pending"
-            # Store the stub for this table
-            table_stub = table_df[table_df["Table ID"] == table_id]["Stub"].iloc[0]
-            st.session_state.table_stubs[table_id] = table_stub
-            st.toast(f"Table {table_id} Added to Queue", icon="✅")
-    
-    if newly_deselected:
-        st.session_state.selected_ids.difference_update(newly_deselected)
-        for table_id in newly_deselected:
-            if table_id in st.session_state.fetch_status:
-                del st.session_state.fetch_status[table_id]
-            if table_id in st.session_state.fetched_tables:
-                del st.session_state.fetched_tables[table_id]
-            if table_id in st.session_state.table_stubs:
-                del st.session_state.table_stubs[table_id]
-            st.toast(f"Table {table_id} Removed from Queue", icon="❌")
-
-    # Store the current edited dataframe for topic changes
-    try:
-        if isinstance(edited_df, pd.DataFrame) and "Selected" in edited_df.columns:
-            st.session_state.last_edited_df = edited_df.copy()
-    except Exception:
-        pass
-
-    # Now build and display the queue in sidebar (after processing changes)
-    queue_df = all_table_df[all_table_df["Table ID"].isin(st.session_state.selected_ids)]
-    
-    with sidebar_queue_placeholder.container():
-        with st.container():
-            if queue_df.empty:
-                st.markdown("*No tables selected*")
-            else:
-                for i, row in queue_df.iterrows():
-                    table_id = row["Table ID"]
-                    col1, col2, col3 = st.columns([1.5, 3, 1])
-                    status = st.session_state.fetch_status.get(table_id, "pending")
-                    icon = {
-                        "pending": "🟰",
-                        "waiting": "⏳", 
-                        "running": "🔄",
-                        "done": "✅",
-                        "error": "❌"
-                    }.get(status, "")
-                    with col1:
-                        st.markdown(f"**{table_id}**")
-                    with col2:
-                        st.markdown(row["Stub"][:25] + "..." if len(row["Stub"]) > 25 else row["Stub"])
-                    with col3:
-                        st.markdown(f"{icon}")
+    with col4:
+            # Add to Queue button moved to the furthest right
+            button_text = f"➕ Add {selected_count} Table{'s' if selected_count != 1 else ''} to Queue" if selected_count > 0 else "➕ Add to Queue"
+            add_to_queue_button = st.button(button_text, type="primary", disabled=(selected_count == 0))
             
-            # Run all button
-            st.markdown("<br>", unsafe_allow_html=True)
-            col1, col2 = st.columns([1, 1])
-            with col2:
-                if st.button("🚀 Run Queue", type="primary", use_container_width=True):
-                    if not st.session_state.selected_ids:
-                        st.warning("No table IDs selected!")
+            if add_to_queue_button:
+                if selected_count > 0:
+                    newly_selected_tables = edited_df[edited_df["Selected"] == True]
+                    added_count = 0
+                    
+                    for _, row in newly_selected_tables.iterrows():
+                        table_id = row["Table ID"]
+                        if table_id not in st.session_state.selected_ids:
+                            st.session_state.selected_ids.add(table_id)
+                            st.session_state.fetch_status[table_id] = "pending"
+                            # Store the stub for this table
+                            st.session_state.table_stubs[table_id] = row["Stub"]
+                            added_count += 1
+                    
+                    if added_count > 0:
+                        st.toast(f"Added {added_count} table{'s' if added_count != 1 else ''} to queue!", icon="✅")
+                        # Reset selections in the table
+                        st.rerun()
                     else:
-                        pending_count = sum(1 for status in st.session_state.fetch_status.values() if status == "pending")
-                        if pending_count == 0:
-                            st.info("All tables in queue have already been processed!")
-                        else:
-                            for table_id in st.session_state.selected_ids:
-                                if st.session_state.fetch_status.get(table_id) == "pending":
-                                    st.session_state.fetch_status[table_id] = "running"
-                                    break  # Only start one at a time
-                            st.rerun()
+                        st.toast("All selected tables are already in the queue!", icon="ℹ️")
 
     # Handle fetching for 1 "running" table at a time
     for table_id, status in st.session_state.fetch_status.items():
